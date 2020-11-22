@@ -11,6 +11,7 @@ logger = logging.getLogger('serve-file')
 
 class Admin:
     def __init__(self):
+        self.mutex = threading.Lock()
         self.binded = []
         self.net_fd = [] # The current user goes first
 
@@ -361,6 +362,7 @@ class Conn:
     def inner_accept(self):
         global sender
         global admin
+        admin.mutex.acquire()
         sender.add_conn(self)
         self.is_host = True
         while not self.rcv_syn:
@@ -373,15 +375,18 @@ class Conn:
         , 0, 0, 0))
         self.seq_no_to_send = (1 + self.seq_no_to_send) % 2 ** 32
         self.acked = False
+        admin.net_fd.append(((self.my_ip, self.my_port), (self.ext_ip, self.ext_port)))
+        logger.info(f'Connection request received from {self.ext_ip} : {self.ext_port}')
         self.mutex.release()
         while True:
             self.mutex.acquire()
             if not self.ack_rcvd == self.seq_no_to_send:
                 self.mutex.release()
                 continue
+            logger.info('Third handshake confirmed')
             self.rcvd_current += 1
             self.mutex.release()
-            admin.net_fd.append(((self.my_ip, self.my_port), (self.ext_ip, self.ext_port)))
+            admin.mutex.release()
             return self
 
 
@@ -399,6 +404,7 @@ class Conn:
     def inner_dial(self, addr):
         global admin
         global sender
+        admin.mutex.acquire()
         if self.is_host:
             raise ConnException('A host can\'t dial')
         if ((self.my_ip, self.my_port), addr) in admin.net_fd:
@@ -413,13 +419,16 @@ class Conn:
         self.send_buff.append((pack, self.seq_no_to_send
         , 0, 0, 0))
         self.seq_no_to_send = (1 + self.seq_no_to_send) % 2 ** 32
+        logger.info(f'Sending connection request to {self.ext_ip} : {self.ext_port}')
         self.mutex.release()
         while not self.rcv_synack:
             pass
+        logger.info('Connection request accepted')
         self.mutex.acquire()
         self.rcvd_current += 1
-        self.mutex.release()
         admin.net_fd.append(((self.my_ip, self.my_port), addr))
+        self.mutex.release()
+        admin.mutex.release()
         return self
 
 

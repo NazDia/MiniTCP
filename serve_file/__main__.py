@@ -46,11 +46,9 @@ def make_server(address, file_path, chunk_size):
     while True:
         try:
             conn = accept(server)
-            # future = executor.submit(handle, conn, file_path, chunk_size)
+            future = executor.submit(handle, conn, file_path, chunk_size)
 
-            handle(conn, file_path, chunk_size)
-
-            # connections.append((conn, future))
+            connections.append((conn, future))
         except KeyboardInterrupt:
             logger.info('closing server')
             break
@@ -58,7 +56,7 @@ def make_server(address, file_path, chunk_size):
             logger.exception(e)
 
     logger.info('releasing resources')
-    # executor.shutdown(True)
+    executor.shutdown(True)
 
 
 def make_client(address, file_path, chunk_size):
